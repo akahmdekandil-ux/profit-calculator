@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>الحاسبة السحابية لأرباح المساهمين - Firebase</title>
+    
+    <!-- مكتبات Firebase الرسمية (Realtime Database) -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
+    <!-- مكتبة الرسوم البيانية -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        :root {
+            --primary-color: #2563eb;
+            --secondary-color: #1e3a8a;
+            --success-color: #10b981;
+            --warning-color: #f59e0b;
+            --danger-color: #ef4444;
+            --background-color: #f8fafc;
+            --card-background: #ffffff;
+            --text-main: #1e293b;
+            --text-muted: #64748b;
+            --border-color: #e2e8f0;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background-color: var(--background-color); color: var(--text-main); padding: 20px; }
+        .container { max-width: 1300px; margin: 0 auto; }
+        header { margin-bottom: 25px; text-align: center; }
+        header h1 { color: var(--secondary-color); font-size: 1.8rem; font-weight: 700; }
+        header p { color: var(--text-muted); margin-top: 5px; font-size: 0.95rem; }
+
+        /* شاشة تسجيل الدخول */
+        #auth-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(15, 23, 42, 0.8); display: flex; justify-content: center; align-items: center; z-index: 1000;
+        }
+        .auth-card {
+            background: var(--card-background); padding: 30px; border-radius: 16px; width: 100%; max-width: 400px;
+            box-shadow: 0 10px 25px rgba(0,0,0,1); text-align: center;
+        }
+        .auth-card h2 { margin-bottom: 20px; color: var(--secondary-color); font-size: 1.4rem; }
+        .auth-card select, .auth-card input { width: 100%; padding: 12px; margin-bottom: 15px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 1rem; outline: none; }
+        .auth-card button { width: 100%; padding: 12px; background: var(--primary-color); color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; }
+        .auth-card button:hover { background: var(--secondary-color); }
+        .auth-error { color: var(--danger-color); font-size: 0.85rem; margin-top: 10px; display: none; }
+
+        /* التطبيق الرئيسي */
+        #app-content { display: none; }
+        .dashboard-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 15px; margin-bottom: 25px; }
+        .card { background: var(--card-background); padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); border: 1px solid var(--border-color); display: flex; flex-direction: column; }
+        .card .card-title { font-size: 0.85rem; color: var(--text-muted); font-weight: 600; margin-bottom: 8px; }
+        .card .card-value { font-size: 1.4rem; font-weight: 700; color: var(--secondary-color); }
+        .card.accent-1 { border-right: 5px solid var(--primary-color); }
+        .card.accent-2 { border-right: 5px solid var(--success-color); }
+        .card.accent-3 { border-right: 5px solid var(--warning-color); }
+        .card.accent-4 { border-right: 5px solid var(--danger-color); }
+
+        .main-layout { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; }
+        @media (max-width: 1024px) { .main-layout { grid-template-columns: 1fr; } }
+
+        .section-box { background: var(--card-background); padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); border: 1px solid var(--border-color); margin-bottom: 20px; }
+        .section-title { font-size: 1.1rem; font-weight: 700; margin-bottom: 15px; color: var(--secondary-color); border-bottom: 2px solid var(--border-color); padding-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
+        
+        .input-group { display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 10px; align-items: end; }
+        @media (max-width: 768px) { .input-group { grid-template-columns: 1fr; } }
+        .form-control { display: flex; flex-direction: column; }
+        .form-control label { font-size: 0.8rem; margin-bottom: 5px; font-weight: 600; }
+        .form-control input { padding: 9px; border: 1px solid var(--border-color); border-radius: 6px; outline: none; font-size: 0.9rem; }
+        .form-control input:focus { border-color: var(--primary-color); }
+        
+        .btn { background-color: var(--primary-color); color: white; padding: 10px 18px; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 0.9rem; }
+        .btn:hover { background-color: var(--secondary-color); }
+        .btn-danger { background-color: var(--danger-color); }
+        .btn-danger:hover { background-color: #dc2626; }
+        .btn-sm { padding: 5px 10px; font-size: 0.8rem; }
+
+        .table-responsive { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; text-align: right; margin-top: 10px; }
+        th, td { padding: 10px 12px; border-bottom: 1px solid var(--border-color); font-size: 0.9rem; }
+        th { background-color: #f1f5f9; color: var(--secondary-color); font-weight: 700; }
+        tr:hover { background-color: #f8fafc; }
+        .total-row { background-color: #edf2f7 !important; font-weight: 700; }
+        .total-row td { color: var(--secondary-color); border-top: 2px solid var(--secondary-color); }
+        
+        .chart-container { position: relative; height: 240px; width: 100%; }
+        .loading-text { text-align: center; color: var(--text-muted); font-weight: 600; padding: 15px; }
+        .badge { background: #e0f2fe; color: #0369a1; padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; }
+        .user-header-bar { display: flex; justify-content: space-between; align-items: center; background: #e2e8f0; padding: 10px 15px; border-radius: 8px; margin-bottom: 20px; font-size: 0.9rem; }
+    </style>
+</head>
+<body>
+
+    <!-- نافذة تسجيل الدخول -->
+    <div id="auth-overlay">
+        <div class="auth-card">
+            <h2>تسجيل الدخول للنظام</h2>
+            <select id="login-role" onchange="toggleLoginForm()">
+                <option value="shareholder">مساهم</option>
+                <option value="admin">مدير النظام (الأدمن)</option>
+            </select>
+            
+            <div id="shareholder-login-box">
+                <select id="login-shareholder-name" style="width: 100%; padding: 12px; margin-bottom: 15px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 1rem;">
+                    <option value="">جاري تحميل المساهمين...</option>
+                </select>
+            </div>
+
+            <input type="password" id="login-pass" placeholder="أدخل الرقم السري">
+            <button onclick="handleLogin()">دخول</button>
+            <div id="auth-error" class="auth-error">الرقم السري غير صحيح، حاول مرة أخرى.</div>
+        </div>
+    </div>
+
+    <!-- واجهة التطبيق الرئيسية -->
+    <div class="container" id="app-content">
+        <header>
+            <h1>الحاسبة التفاعلية المشتركة للمساهمين</h1>
+            <p>نظام سحابي مركزي لمزامنة وحساب الأرباح المتوقعة نهاية الدورة (ج.م)</p>
+        </header>
+
+        <div class="user-header-bar">
+            <div>المستخدم الحالي: <span id="current-user-badge" class="badge"></span></div>
+            <button class="btn btn-danger btn-sm" onclick="logout()">تسجيل الخروج</button>
+        </div>
+
+        <div class="dashboard-grid">
+            <div class="card accent-1">
+                <span class="card-title">إجمالي رأس المال الجمعي</span>
+                <span class="card-value" id="dash-total-cap">0 ج.م</span>
+            </div>
+            <div class="card accent-2">
+                <span class="card-title">إجمالي أرباح سيناريو 10%</span>
+                <span class="card-value" id="dash-p10">0 ج.م</span>
+            </div>
+            <div class="card accent-3">
+                <span class="card-title">إجمالي أرباح سيناريو 20%</span>
+                <span class="card-value" id="dash-p20">0 ج.م</span>
+            </div>
+            <div class="card accent-4">
+                <span class="card-title">إجمالي أرباح سيناريو 30%</span>
+                <span class="card-value" id="dash-p30">0 ج.م</span>
+            </div>
+        </div>
+
+        <div class="main-layout">
+            <div>
+                <!-- لوحة تحكم الأدمن (إضافة مساهمين وتعديل كلمات السر) -->
+                <div class="section-box" id="admin-controls" style="display: none;">
+                    <div class="section-title">لوحة تحكم الأدمن (إضافة مساهم وتحديد رقمه السري)</div>
+                    <div class="input-group">
+                        <div class="form-control">
+                            <label for="sh-name">اسم المساهم</label>
+                            <input type="text" id="sh-name" placeholder="مثال: أحمد محمد">
+                        </div>
+                        <div class="form-control">
+                            <label for="sh-capital">رأس المال (ج.م)</label>
+                            <input type="number" id="sh-capital" placeholder="50000">
+                        </div>
+                        <div class="form-control">
+                            <label for="sh-pin">الرقم السري الخاص</label>
+                            <input type="text" id="sh-pin" placeholder="مثال: 1234">
+                        </div>
+                        <button class="btn" onclick="addShareholder()">إضافة مساهم</button>
+                    </div>
+                </div>
+
+                <div class="section-box">
+                    <div class="section-title">بيانات المساهمين الحالية وحسابات العوائد</div>
+                    <div class="table-responsive">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>اسم المساهم</th>
+                                    <th>رأس المال (ج.م)</th>
+                                    <th>ربح 10% (ج.م)</th>
+                                    <th>ربح 20% (ج.م)</th>
+                                    <th>ربح 30% (ج.م)</th>
+                                    <th id="th-actions" style="display:none;">إدارة الأدمن</th>
+                                </tr>
+                            </thead>
+                            <tbody id="table-body">
+                                <tr><td colspan="6" class="loading-text">جاري الاتصال بقاعدة البيانات السحابية...</td></tr>
+                            </tbody>
+                            <tfoot>
+                                <tr class="total-row">
+                                    <td>المجموع الإجمالي</td>
+                                    <td id="total-capital">0 ج.م</td>
+                                    <td id="total-10">0 ج.م</td>
+                                    <td id="total-20">0 ج.م</td>
+                                    <td id="total-30">0 ج.م</td>
+                                    <td id="total-foot-action" style="display:none;">-</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div>
+                <div class="section-box">
+                    <div class="section-title">مقارنة عوائد الأرباح الإجمالية</div>
+                    <div class="chart-container">
+                        <canvas id="profitChart"></canvas>
+                    </div>
+                </div>
+                
+                <div class="section-box">
+                    <div class="section-title">توزيع الحصص الرأسمالية للمساهمين</div>
+                    <div class="chart-container">
+                        <canvas id="shareChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+<script>
+    // إعدادات Firebase السحابية الصحيحة لمشروعك
+    const firebaseConfig = {
+        apiKey: "AIzaSyBnO8xeAgMthRy8x46GU5K0lZOD67U_bQ",
+        authDomain: "profitcalculator-9868f.firebaseapp.com",
+        databaseURL: "https://profitcalculator-9868f-default-rtdb.firebaseio.com",
+        projectId: "profitcalculator-9868f",
+        storageBucket: "profitcalculator-9868f.firebasestorage.app",
+        messagingSenderId: "1098286609872",
+        appId: "1:1098286609872:web:e1d2b646e8346849d50575",
+        measurementId: "G-SC1ZRZBFJ7"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const database = firebase.database();
+    
+    // المراجع السحابية
+    const dbRefShareholders = database.ref('shareholders');
+    const dbRefConfig = database.ref('config');
+
+    let profitChartInstance = null;
+    let shareChartInstance = null;
+    let cachedData = {};
+    let systemConfig = { adminPin: "9999" }; // الرقم الافتراضي للأدمن
+
+    // جلب الإعدادات والبيانات فور فتح الصفحة
+    dbRefConfig.on('value', (snapshot) => {
+        const cfg = snapshot.val();
+        if (cfg) {
+            systemConfig = cfg;
+        } else {
+            dbRefConfig.set({ adminPin: "9999" });
+        }
+    });
+
+    dbRefShareholders.on('value', (snapshot) => {
+        cachedData = snapshot.val() || {};
+        updateShareholdersDropdown();
+        renderUI(cachedData);
+    });
+
+    function toggleLoginForm() {
+        const role = document.getElementById('login-role').value;
+        const shBox = document.getElementById('shareholder-login-box');
+        shBox.style.display = (role === 'shareholder') ? 'block' : 'none';
+    }
+
+    function updateShareholdersDropdown() {
+        const select = document.getElementById('login-shareholder-name');
+        select.innerHTML = '<option value="">اختر اسم المساهم</option>';
+        for (let key in cachedData) {
+            select.innerHTML += `<option value="${key}">${cachedData[key].name}</option>`;
+        }
+    }
+
+    function handleLogin() {
+        const role = document.getElementById('login-role').value;
+        const enteredPass = document.getElementById('login-pass').value.trim();
+        const errorDiv = document.getElementById('auth-error');
+
+        if (role === 'admin') {
+            // تثبيت الرقم السري للأدمن مباشرة لضمان الدخول السريع
+            if (enteredPass === "9999" || (systemConfig && enteredPass === systemConfig.adminPin)) {
+                sessionStorage.setItem('auth_role', 'admin');
+                sessionStorage.setItem('auth_name', 'مدير النظام (الأدمن)');
+                initAppSession('admin');
+            } else {
+                errorDiv.style.display = 'block';
+            }
+        } else {
+            const shKey = document.getElementById('login-shareholder-name').value;
+            if (!shKey) {
+                errorDiv.innerText = "الرجاء اختيار اسم المساهم";
+                errorDiv.style.display = 'block';
+                return;
+            }
+            const shareholder = cachedData[shKey];
+            if (shareholder && shareholder.pin === enteredPass) {
+                sessionStorage.setItem('auth_role', 'shareholder');
+                sessionStorage.setItem('auth_name', shareholder.name);
+                sessionStorage.setItem('auth_key', shKey);
+                initAppSession('shareholder');
+            } else {
+                errorDiv.innerText = "الرقم السري غير صحيح";
+                errorDiv.style.display = 'block';
+            }
+        }
+    }
+
+    function checkExistingSession() {
+        const role = sessionStorage.getItem('auth_role');
+        if (role) {
+            initAppSession(role);
+        }
+    }
+
+    function initAppSession(role) {
+        document.getElementById('auth-overlay').style.display = 'none';
+        document.getElementById('app-content').style.display = 'block';
+        const name = sessionStorage.getItem('auth_name');
+        document.getElementById('current-user-badge').innerText = name + (role === 'admin' ? ' (صلاحيات كاملة)' : ' (صلاحية عرض وتعديل خاص)');
+
+        if (role === 'admin') {
+            document.getElementById('admin-controls').style.display = 'block';
+            document.getElementById('th-actions').style.display = 'table-cell';
+            document.getElementById('total-foot-action').style.display = 'table-cell';
+        } else {
+            document.getElementById('admin-controls').style.display = 'none';
+            document.getElementById('th-actions').style.display = 'none';
+            document.getElementById('total-foot-action').style.display = 'none';
+        }
+        renderUI(cachedData);
+    }
+
+    function logout() {
+        sessionStorage.clear();
+        location.reload();
+    }
+
+    function formatEGP(value) {
+        return new Intl.NumberFormat('ar-EG', { style: 'currency', currency: 'EGP', maximumFractionDigits: 0 }).format(value).replace("جم", "ج.م");
+    }
+
+    function addShareholder() {
+        const name = document.getElementById('sh-name').value.trim();
+        const capital = parseFloat(document.getElementById('sh-capital').value);
+        const pin = document.getElementById('sh-pin').value.trim();
+
+        if (!name || isNaN(capital) || !pin) {
+            alert('الرجاء إدخال اسم المساهم، ورأس المال، وتحديد رقمه السري بدقة.');
+            return;
+        }
+
+        dbRefShareholders.push({ name, capital, pin }).then(() => {
+            document.getElementById('sh-name').value = '';
+            document.getElementById('sh-capital').value = '';
+            document.getElementById('sh-pin').value = '';
+        });
+    }
+
+    function updateCapitalFirebase(key) {
+        const inputVal = document.getElementById(`cap-input-${key}`).value;
+        const newCap = parseFloat(inputVal);
+        if (isNaN(newCap)) return;
+        dbRefShareholders.child(key).update({ capital: newCap });
+    }
+
+    function updatePinFirebase(key) {
+        const newPin = prompt("أدخل الرقم السري الجديد لهذا المساهم:");
+        if (newPin !== null && newPin.trim() !== "") {
+            dbRefShareholders.child(key).update({ pin: newPin.trim() });
+            alert("تم تحديث الرقم السري بنجاح.");
+        }
+    }
+
+    function deleteShareholder(key) {
+        if (confirm('هل أنت متأكد من حذف هذا المساهم نهائياً؟')) {
+            dbRefShareholders.child(key).remove();
+        }
+    }
+
+    function renderUI(data) {
+        const tbody = document.getElementById('table-body');
+        tbody.innerHTML = '';
+
+        let totalCapital = 0;
+        let totalP10 = 0;
+        let totalP20 = 0;
+        let totalP30 = 0;
+        
+        let chartLabels = [];
+        let chartShares = [];
+        const isAdmin = sessionStorage.getItem('auth_role') === 'admin';
+
+        if (!data || Object.keys(data).length === 0) {
+            tbody.innerHTML = `<tr><td colspan="6" class="loading-text">لا توجد بيانات مساهمين حالياً. يجدر بالأدمن إضافتهم.</td></tr>`;
+            updateDashboardMetrics(0, 0, 0, 0);
+            updateCharts([], [], 0, 0, 0);
+            return;
+        }
+
+        for (let key in data) {
+            const item = data[key];
+            const cap = parseFloat(item.capital) || 0;
+            const p10 = cap * 0.10;
+            const p20 = cap * 0.20;
+            const p30 = cap * 0.30;
+
+            totalCapital += cap;
+            totalP10 += p10;
+            totalP20 += p20;
+            totalP30 += p30;
+
+            chartLabels.push(item.name);
+            chartShares.push(cap);
+
+            let actionHtml = '';
+            if (isAdmin) {
+                actionHtml = `
+                    <td>
+                        <button class="btn btn-sm" onclick="updatePinFirebase('${key}')" style="background:#f59e0b; margin-left:5px;">تغيير الرقم</button>
+                        <button class="btn btn-danger btn-sm" onclick="deleteShareholder('${key}')">حذف</button>
+                    </td>
+                `;
+            }
+
+            let capitalDisplay = isAdmin ? 
+                `<input type="number" id="cap-input-${key}" value="${cap}" style="width:110px; padding:5px;" onchange="updateCapitalFirebase('${key}')">` : 
+                formatEGP(cap);
+
+            tbody.innerHTML += `
+                <tr>
+                    <td><strong>${item.name}</strong></td>
+                    <td>${capitalDisplay}</td>
+                    <td>${formatEGP(p10)}</td>
+                    <td>${formatEGP(p20)}</td>
+                    <td>${formatEGP(p30)}</td>
+                    ${isAdmin ? actionHtml : ''}
+                </tr>
+            `;
+        }
+
+        document.getElementById('total-capital').innerText = formatEGP(totalCapital);
+        document.getElementById('total-10').innerText = formatEGP(totalP10);
+        document.getElementById('total-20').innerText = formatEGP(totalP20);
+        document.getElementById('total-30').innerText = formatEGP(totalP30);
+
+        updateDashboardMetrics(totalCapital, totalP10, totalP20, totalP30);
+        updateCharts(chartLabels, chartShares, totalP10, totalP20, totalP30);
+    }
+
+    function updateDashboardMetrics(cap, p10, p20, p30) {
+        document.getElementById('dash-total-cap').innerText = formatEGP(cap);
+        document.getElementById('dash-p10').innerText = formatEGP(p10);
+        document.getElementById('dash-p20').innerText = formatEGP(p20);
+        document.getElementById('dash-p30').innerText = formatEGP(p30);
+    }
+
+    function updateCharts(labels, shares, p10, p20, p30) {
+        // رسم بياني للأرباح
+        const ctxProfit = document.getElementById('profitChart').getContext('2d');
+        if (profitChartInstance) profitChartInstance.destroy();
+        profitChartInstance = new Chart(ctxProfit, {
+            type: 'bar',
+            data: {
+                labels: ['سيناريو 10%', 'سيناريو 20%', 'سيناريو 30%'],
+                datasets: [{
+                    label: 'إجمالي الأرباح المتوقعة (ج.م)',
+                    data: [p10, p20, p30],
+                    backgroundColor: ['#2563eb', '#10b981', '#f59e0b'],
+                    borderRadius: 6
+                }]
+            },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+        });
+
+        // رسم بياني لتوزيع الحصص
+        const ctxShare = document.getElementById('shareChart').getContext('2d');
+        if (shareChartInstance) shareChartInstance.destroy();
+        shareChartInstance = new Chart(ctxShare, {
+            type: 'doughnut',
+            data: {
+                labels: labels.length > 0 ? labels : ['فارغ'],
+                datasets: [{
+                    data: shares.length > 0 ? shares : [1],
+                    backgroundColor: ['#2563eb', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899']
+                }]
+            },
+            options: { responsive: true, maintainAspectRatio: false }
+        });
+    }
+
+    // التحقق من الجلسة عند التحميل
+    window.onload = function() {
+        checkExistingSession();
+    };
+</script>
+</body>
+</html>
